@@ -1,0 +1,64 @@
+contract ERC20 =
+  record state = {
+    _owner            : address, 
+    _totalSupply      : int,
+    _balances         : map(address, int),
+    _allowed          : map((address,address), int)}
+
+  public stateful function init() = {
+    _owner = Call.caller,
+    _totalSupply = 0,
+    _balances = {},
+    _allowed = {}}
+
+  private function lookupByAddress(k : address, m, v) =
+  	switch(Map.lookup(k, m))
+	    None    => v
+	    Some(x) => x
+
+  public function totalSupply() : int = state._totalSupply
+
+  public function balanceOf(who: address) : int = lookupByAddress(who, state._balances, 0)
+
+  public stateful function transfer(to: address, value: int) : bool =
+    _transfer(Call.caller, to, value)
+
+  private stateful function _transfer(from: address, to: address, value: int) : bool =
+    require(value > 0, "Value is sub zero")
+    require(value =< balanceOf(from), "Not enough balance")
+    require(to != #0, "Invalid address")
+      
+    put(state{
+      _balances[from] = sub(balanceOf(from), value),
+      _balances[to] = add(balanceOf(to), value)})
+
+    true
+
+  public stateful function transferFrom(from: address, to: address, value: int) : bool =
+    _transfer(from, to, value)
+
+    true
+
+  public stateful function mint(account: address, value: int) : bool =
+    require(account != #0, "Invalid address")
+
+    put(state{_totalSupply = add(state._totalSupply, value),
+          _balances[account] = add(balanceOf(account), value)})
+
+    true
+
+  private function add(_a : int, _b : int) : int =
+    let c : int = _a + _b
+    require(c >= _a, "Error")
+    c
+
+  private function sub(_a : int, _b : int) : int =
+    require(_b =< _a, "Error")
+    _a - _b
+
+  private function require(b : bool, err : string) =
+    if(!b) 
+      abort(err)
+
+  private function onlyOwner() =
+      require(Call.caller == state._owner, "Only owner can mint!")
