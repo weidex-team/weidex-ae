@@ -244,37 +244,39 @@ contract WeiDex =
     put(state{tokenOrders=newTokenOrders})
 
   private stateful function updateBalance(who : address, balance : map(address,int)) =
-    let newUser : user = state.users[who]{balances = balance}
+    let newUser : user = 
+      state.users[who={balances={}, lockedBalances={}, orderHistory= {}, orders={}}]{balances = balance}
     let newUsers : map(address, user) = state.users{[who] = newUser}
     put(state{users = newUsers})
   
   private stateful function updateLockedBalance(who : address, lockedBalances : map(address,int)) =
-    let newUser : user = state.users[who]{lockedBalances = lockedBalances}
+    let newUser : user = 
+      state.users[who={balances={}, lockedBalances={}, orderHistory= {}, orders={}}]{lockedBalances = lockedBalances}
     let newUsers : map(address, user) = state.users{[who] = newUser}
     put(state{users = newUsers})
 
   private stateful function decreaseUserBalance(who : address, token : address, amount : int) =
     let currentBalance : int = balanceOf(who, token)
     let newUserBalance : map(address,int) = 
-      state.users[who].balances{[token] = sub(currentBalance, amount)}
+      state.users[who={balances={}, lockedBalances={}, orderHistory= {}, orders={}}].balances{[token] = sub(currentBalance, amount)}
     updateBalance(who, newUserBalance)
 
   private stateful function increaseUserBalance(who : address, token : address, amount : int) =
     let currentBalance : int = balanceOf(who, token)
     let newUserBalance : map(address,int) = 
-      state.users[who].balances{[token] = add(currentBalance, amount)}
+      state.users[who={balances={}, lockedBalances={}, orderHistory= {}, orders={}}].balances{[token] = add(currentBalance, amount)}
     updateBalance(who, newUserBalance)
   
   private stateful function decreaseUserLockedBalance(who : address, token : address, amount : int) =
     let currentLockedBalance : int = balanceOf(who, token)
     let newLockedBalance : map(address,int) = 
-      state.users[who].lockedBalances{[token] = sub(currentLockedBalance, amount)}
+      state.users[who={balances={}, lockedBalances={}, orderHistory= {}, orders={}}].lockedBalances{[token] = sub(currentLockedBalance, amount)}
     updateLockedBalance(who, newLockedBalance)
 
   private stateful function increaseUserLockedBalance(who : address, token : address, amount : int) =
     let currentLockedBalance : int = balanceOf(who, token)
     let newLockedBalance : map(address,int) = 
-      state.users[who].lockedBalances{[token] = add(currentLockedBalance, amount)}
+      state.users[who={balances={}, lockedBalances={}, orderHistory= {}, orders={}}].lockedBalances{[token] = add(currentLockedBalance, amount)}
     updateLockedBalance(who, newLockedBalance)
   
   private stateful function deleteUserOrder(user : address, hash : string) =
