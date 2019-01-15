@@ -354,7 +354,7 @@ contract WeiDex =
     partialAmount
   
   private function getFeeAmount(numerator : int, target : int) : int =
-    let feeAmount = div(mul(numerator, target), 10 ^ 18)
+    let feeAmount = div(mul(numerator, target), 1000000000000000000)
     feeAmount
 
   /************************ASSERT*****************************/
