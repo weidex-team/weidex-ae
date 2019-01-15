@@ -58,7 +58,7 @@ contract WeiDex =
     
     increaseUserBalance(user, token.address, value)
 
-    if(userHasReferrer(user, state.referrals))
+    if(userHasReferrer(user))
       addReferral(user, referral)
 
     true
@@ -158,8 +158,8 @@ contract WeiDex =
     true
 
   /************************PUBLIC VIEW FUNCTIONS*****************************/  
-  public function userHasReferrer(user : address, referrals : map(address, address)) : bool =
-    Map.member(user, referrals)
+  public function userHasReferrer(user : address) : bool =
+    Map.member(user, state.referrals)
 
   public function balanceOf(who: address, token : address) : int =
     let user : user = getUser(who, state.users)
