@@ -149,85 +149,58 @@ async function deployContract(owner, path) {
     return { compiled, instance };
 }
 
-async function mint(owner, address, amount) {
-    const minted = await owner.contractCall(
-        erc20.compiled.bytecode,
-        'sophia',
-        erc20.instance.address,
-        'mint',
-        {
-            args: `(${address},${amount})`,
-            options: {
-                ttl: config.ttl,
-            },
-            abi: 'sophia',
-        }
-    );
-
-    const result = await minted.decode('bool');
-    assert(result.value, 'could not mint.');
-    return result.value;
-}
-
 function getAddress(publicKey) {
     let address = '0x' + Crypto.decodeBase58Check(publicKey.split('_')[1]).toString('hex');
     return address;
 }
 
-async function deposit(user, token, amount, beneficiary, referral, ae) {
-    const deposited = await user.contractCall(
-        weidex.compiled.bytecode,
-        'sophia',
-        weidex.instance.address,
-        'deposit',
-        {
-            args: `(${token},${amount},${beneficiary},${referral})`,
-            options: {
-                ttl: config.ttl,
-                amount: ae,
-            },
-            abi: 'sophia',
-        }
-    );
+async function mint(caller, address, amount) {
+    const minted = await callContract(caller, 'mint', erc20, `(${address},${amount})`);
+    const result = await minted.decode('bool');
+    assert(result.value, 'could not mint.');
+    return result.value;
+}
 
+async function deposit(caller, token, amount, beneficiary, referral, ae) {
+    const deposited = await callContract(
+        caller,
+        'deposit',
+        weidex,
+        `(${token},${amount},${beneficiary},${referral})`,
+        ae
+    );
     const result = await deposited.decode('bool');
     return result.value;
 }
 
-async function withdraw(user, token, amount) {
-    const deposited = await user.contractCall(
-        weidex.compiled.bytecode,
-        'sophia',
-        weidex.instance.address,
-        'withdraw',
-        {
-            args: `(${token},${amount})`,
-            options: {
-                ttl: config.ttl,
-            },
-            abi: 'sophia',
-        }
-    );
-
-    const result = await deposited.decode('bool');
+async function withdraw(caller, token, amount) {
+    const withdraw = await callContract(caller, 'withdraw', weidex, `(${token},${amount})`);
+    const result = await withdraw.decode('bool');
     return result.value;
 }
 
 async function getBalanceOf(caller, user, token) {
-    const balance = await caller.contractCall(
-        weidex.compiled.bytecode,
+    const balance = await callContract(caller, 'balanceOf', weidex, `(${user},${token})`);
+    const result = await balance.decode('int');
+    return result.value;
+}
+
+async function callContract(caller, fn, contract, args, value) {
+    let options = { ttl: config.ttl };
+    if (typeof value != 'undefined') {
+        options = { ...options, amount: value };
+    }
+    const result = await caller.contractCall(
+        contract.compiled.bytecode,
         'sophia',
-        weidex.instance.address,
-        'balanceOf',
+        contract.instance.address,
+        fn,
         {
-            args: `(${user},${token})`,
-            options: {
-                ttl: config.ttl,
-            },
+            args,
+            options,
             abi: 'sophia',
         }
     );
 
-    const result = await balance.decode('int');
-    return result.value;
+    return result;
 }
