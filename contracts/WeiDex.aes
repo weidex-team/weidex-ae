@@ -190,6 +190,17 @@ contract WeiDex =
     let user : user = getUser(who, state.users)
     let orderHistory : list((string, order)) = Map.to_list(user.orderHistory)
     orderHistory
+  
+  public function getUserBalances(who : address) : list((address, int)) = 
+    let user : user = getUser(who, state.users)
+    let balances : list((address, int)) = Map.to_list(user.balances)
+    balances
+
+  public function getUserLockedBalances(who : address) : list((address, int)) = 
+    let user : user = getUser(who, state.users)
+    let lockedBalances : list((address, int)) = Map.to_list(user.lockedBalances)
+    lockedBalances
+
   /************************PRIVATE STATEFUL FUNCTIONS*****************************/  
   private stateful function addReferral(user : address, referral : address) =
     put(state{referrals[user] = referral})
