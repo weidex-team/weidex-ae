@@ -201,12 +201,6 @@ contract WeiDex =
     let lockedBalances : list((address, int)) = Map.to_list(user.lockedBalances)
     lockedBalances
 
-  public function getOrder(who : address, hash : string) : order =
-    let user : user = getUser(who, state.users)
-    require(userHasOrder(hash, user.orders), "GET_ORDER_INVALID_ORDER")
-    let foundOrder : order = getOrderByHash(hash, user.orders)
-    foundOrder
-
   /************************PRIVATE STATEFUL FUNCTIONS*****************************/
   private stateful function addReferral(user : address, referral : address) =
     put(state{referrals[user] = referral})
@@ -307,6 +301,12 @@ contract WeiDex =
   private function getUser(who : address, users : map(address, user)) : user =
     let user : user = lookupByAddress(who, users, {balances={}, lockedBalances={}, orderHistory= {}, orders={}})
     user
+
+  private function getOrder(who : address, hash : string) : order =
+    let user : user = getUser(who, state.users)
+    require(userHasOrder(hash, user.orders), "GET_ORDER_INVALID_ORDER")
+    let foundOrder : order = getOrderByHash(hash, user.orders)
+    foundOrder
 
   private function userHasOrder(hash: string, orders : map(string, order)) : bool =
     Map.member(hash, orders)
