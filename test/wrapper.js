@@ -13,6 +13,7 @@ module.exports = {
     getLockedBalanceOf,
     getAvailableBalanceOf,
     placeOrder,
+    takeOrder,
     cancelOrder,
     getOrders,
     getOrderHistory,
@@ -130,6 +131,17 @@ async function placeOrder(caller, order) {
         weidex,
         `(${order.sellAmount},${order.buyAmount},${order.expiration},
           ${order.sellToken},${order.buyToken},"${order.hash}")`
+    );
+    const result = await balance.decode('bool');
+    return result.value;
+}
+
+async function takeOrder(caller, user, hash, takerSellAmount) {
+    const balance = await callContract(
+        caller,
+        'takeOrder',
+        weidex,
+        `(${user},"${hash}",${takerSellAmount})`
     );
     const result = await balance.decode('bool');
     return result.value;

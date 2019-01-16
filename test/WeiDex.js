@@ -11,6 +11,7 @@ const {
     getLockedBalanceOf,
     getAvailableBalanceOf,
     placeOrder,
+    takeOrder,
     cancelOrder,
     getOrders,
     getOrderHistory,
@@ -164,5 +165,87 @@ describe('WeiDex Contract', () => {
 
         const history = await getOrderHistory(alice, alice.addr);
         assert.equal(history[0].status, 3);
+    });
+
+    it('should fully take order', async () => {
+        const token = tokenAddress;
+        const depositAmount = 100;
+        const taker = bob.addr;
+        const takerSellAmount = 20;
+        const inputOrder = {
+            sellAmount: 10,
+            buyAmount: 20,
+            expiration: 1557887965572,
+            sellToken: 0,
+            buyToken: tokenAddress,
+            hash: '0x6378dda51724bca215ddc353efa47107dd942b67df300b533f8f556caed0ffea',
+        };
+
+        await deposit(bob, token, depositAmount, taker, taker, 0);
+        await placeOrder(alice, inputOrder);
+
+        const result = await takeOrder(bob, alice.addr, inputOrder.hash, takerSellAmount);
+        assert(result, 'order should be taken');
+
+        // order should not be open anymore
+        const { orders, valid } = await getOrders(alice, alice.addr, 0);
+        assert.equal(valid, true);
+        assert.equal(orders.length, 0);
+
+        // maker should have new order in the history
+        // filled amount is the amount received by the maker
+        const makerHistory = await getOrderHistory(alice, alice.addr);
+        assert.equal(makerHistory.length, 2); // the cancelled order is also in the history
+        assert.equal(makerHistory[0].filled, 20);
+        assert.equal(makerHistory[0].sellToken, 0);
+
+        // taker should have new order in the history
+        // filled amount is the amount received by the taker
+        const takerHistory = await getOrderHistory(bob, bob.addr);
+        assert.equal(takerHistory.length, 1);
+        assert.equal(takerHistory[0].filled, 10);
+        assert.equal(takerHistory[0].buyToken, 0);
+    });
+
+    it('should partially take order', async () => {
+        const token = tokenAddress;
+        const depositAmount = 100;
+        const taker = bob.addr;
+        const takerSellAmount = 10;
+        const inputOrder = {
+            sellAmount: 10,
+            buyAmount: 20,
+            expiration: 1557887965572,
+            sellToken: 0,
+            buyToken: tokenAddress,
+            hash: '0x6378dda51724bca215ddc353efa47107dd942b67df300b533f8f556caed0ffeb',
+        };
+
+        await deposit(bob, token, depositAmount, taker, taker, 0);
+        await placeOrder(alice, inputOrder);
+
+        const result = await takeOrder(bob, alice.addr, inputOrder.hash, takerSellAmount);
+        assert(result, 'order should be taken');
+
+        // order should not be open anymore
+        const { orders, valid } = await getOrders(alice, alice.addr, 0);
+        assert.equal(valid, true);
+        assert.equal(orders.length, 1);
+        assert.equal(orders[0].status, 1);
+        assert.equal(orders[0].filled, 10);
+
+        // maker should have new order in the history
+        // filled amount is the amount received by the maker
+        const makerHistory = await getOrderHistory(alice, alice.addr);
+        assert.equal(makerHistory.length, 3); // the cancelled order is also in the history
+        assert.equal(makerHistory[1].filled, 10);
+        assert.equal(makerHistory[1].sellToken, 0);
+
+        // taker should have new order in the history
+        // filled amount is the amount received by the taker
+        const takerHistory = await getOrderHistory(bob, bob.addr);
+        assert.equal(takerHistory.length, 2);
+        assert.equal(takerHistory[1].filled, 5);
+        assert.equal(takerHistory[1].buyToken, 0);
     });
 });
