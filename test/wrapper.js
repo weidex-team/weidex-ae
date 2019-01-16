@@ -1,4 +1,5 @@
 const config = require('./config');
+const { arraysEqual } = require('./utils');
 
 let weidex;
 let erc20;
@@ -12,7 +13,9 @@ module.exports = {
     getLockedBalanceOf,
     getAvailableBalanceOf,
     placeOrder,
-    getOrder,
+    cancelOrder,
+    getOrders,
+    getOrderHistory,
 };
 
 function init(exchange, token) {
@@ -73,24 +76,51 @@ async function getAvailableBalanceOf(caller, user, token) {
     return result.value;
 }
 
-async function getOrder(caller, user, hash) {
-    const order = await callContract(caller, 'getOrder', weidex, `(${user},"${hash}")`);
+async function getOrderHistory(caller, user) {
+    const order = await callContract(caller, 'getOrderHistory', weidex, `(${user})`);
     const result = await order.decode(
-        '(int,int,int,int,int,address,address,address,address,string)'
+        'list((string,(int,int,int,int,int,address,address,address,address,string)))'
     );
+    return orderListHelper(result.value);
+}
 
-    return {
-        sellAmount: result.value[0].value,
-        buyAmount: result.value[1].value,
-        filled: result.value[2].value,
-        status: result.value[3].value,
-        expiration: result.value[4].value,
-        sellToken: result.value[5].value,
-        buyToken: result.value[6].value,
-        maker: result.value[7].value,
-        taker: result.value[8].value,
-        hash: result.value[9].value,
-    };
+async function getOrders(caller, user, token) {
+    const userOrders = await callContract(caller, 'getUserOpenOrders', weidex, `(${user})`);
+    const tokenOrders = await callContract(caller, 'getTokenOpenOrders', weidex, `${token}`);
+    const userOrdersResult = await userOrders.decode(
+        'list((string,(int,int,int,int,int,address,address,address,address,string)))'
+    );
+    const tokenOrdersResult = await tokenOrders.decode(
+        'list((string,(int,int,int,int,int,address,address,address,address,string)))'
+    );
+    const userOrderArray = orderListHelper(userOrdersResult.value);
+    const tokenOrderArray = orderListHelper(tokenOrdersResult.value);
+    const orderListsEquals = arraysEqual(tokenOrderArray, userOrderArray);
+
+    return { orders: userOrderArray, valid: orderListsEquals };
+}
+
+function orderListHelper(list) {
+    let orders = [];
+
+    list.forEach(element => {
+        const order = {
+            sellAmount: element.value[1].value[0].value,
+            buyAmount: element.value[1].value[1].value,
+            filled: element.value[1].value[2].value,
+            status: element.value[1].value[3].value,
+            expiration: element.value[1].value[4].value,
+            sellToken: element.value[1].value[5].value,
+            buyToken: element.value[1].value[6].value,
+            maker: element.value[1].value[7].value,
+            taker: element.value[1].value[8].value,
+            hash: element.value[1].value[9].value,
+        };
+
+        orders.push(order);
+    });
+
+    return orders;
 }
 
 async function placeOrder(caller, order) {
@@ -101,6 +131,12 @@ async function placeOrder(caller, order) {
         `(${order.sellAmount},${order.buyAmount},${order.expiration},
           ${order.sellToken},${order.buyToken},"${order.hash}")`
     );
+    const result = await balance.decode('bool');
+    return result.value;
+}
+
+async function cancelOrder(caller, hash) {
+    const balance = await callContract(caller, 'cancelOrder', weidex, `("${hash}")`);
     const result = await balance.decode('bool');
     return result.value;
 }

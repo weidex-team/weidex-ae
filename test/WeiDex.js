@@ -11,7 +11,9 @@ const {
     getLockedBalanceOf,
     getAvailableBalanceOf,
     placeOrder,
-    getOrder,
+    cancelOrder,
+    getOrders,
+    getOrderHistory,
 } = require('./wrapper');
 
 const { deployContract } = require('./deploy');
@@ -26,9 +28,7 @@ describe('WeiDex Contract', () => {
 
     before(async () => {
         const wallets = await getWallets();
-        owner = wallets[0];
-        alice = wallets[1];
-        bob = wallets[2];
+        [owner, alice, bob] = wallets;
 
         const erc20 = await deployContract(owner, config.erc20SourcePath);
         assert(erc20.instance, 'could not deploy the ERC20 contract');
@@ -140,6 +140,29 @@ describe('WeiDex Contract', () => {
         );
         assert.equal(lockedBalanceAfter, inputOrder.sellAmount);
 
-        const outputOrder = await getOrder(alice, alice.addr, inputOrder.hash);
+        const { orders, valid } = await getOrders(alice, alice.addr, 0);
+        assert.equal(valid, true);
+        assert.equal(orders.length, 1);
+        assert.equal(orders[0].status, 0);
+        assert.equal(orders[0].filled, 0);
+        assert.equal(orders[0].taker, 0);
+        assert.equal(orders[0].hash, inputOrder.hash);
+    });
+
+    it('should cancel order', async () => {
+        const hash = '0x6378dda51724bca215ddc353efa47107dd942b67df300b533f8f556caed0ffed';
+        const token = 0;
+
+        const lockedBalanceBefore = await getLockedBalanceOf(alice, alice.addr, token);
+        assert.notEqual(lockedBalanceBefore, 0);
+
+        const result = await cancelOrder(alice, hash);
+        assert(result, 'order should be cancelled');
+
+        const lockedBalanceAfter = await getLockedBalanceOf(alice, alice.addr, token);
+        assert.equal(lockedBalanceAfter, 0);
+
+        const history = await getOrderHistory(alice, alice.addr);
+        assert.equal(history[0].status, 3);
     });
 });
