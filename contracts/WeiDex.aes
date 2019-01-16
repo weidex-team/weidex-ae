@@ -149,8 +149,6 @@ contract WeiDex =
 
     // update user and token orders
     if(add(order.filled, takerSellAmount) == order.buyAmount)
-      updateTokenOrderFilledAmountAndStatus(hash, order, takerSellAmount, 2)
-      updateUserOrderFilledAmountAndStatus(maker, hash, takerSellAmount, 2)
       removeOrder(maker, order.sellToken, hash) // if order is fully filled remove it from the open orders
     else
       updateTokenOrderFilledAmountAndStatus(hash, order, takerSellAmount, 1)
@@ -231,7 +229,7 @@ contract WeiDex =
   private stateful function updateTokenOrderStatus(hash : string, order : order, status : int) : order =
     let cancelledOrder : order = order{status = status}
     let newTokenOrders : map(address, map(string, order)) =
-      state.tokenOrders{[order.buyToken =
+      state.tokenOrders{[order.sellToken =
         {[hash] = cancelledOrder}] @ previousOrders = previousOrders{[hash] = cancelledOrder}}
     put(state{tokenOrders=newTokenOrders})
     cancelledOrder
@@ -239,7 +237,7 @@ contract WeiDex =
   private stateful function updateTokenOrderFilledAmountAndStatus(hash : string, order :order, filled : int, status : int) =
     let filledOrder : order = order{filled @ f = f + filled, status = status}
     let newTokenOrders : map(address, map(string, order)) =
-      state.tokenOrders{[order.buyToken =
+      state.tokenOrders{[order.sellToken =
         {[hash] = filledOrder}] @ previousOrders = previousOrders{[hash] = filledOrder}}
     put(state{tokenOrders=newTokenOrders})
 
