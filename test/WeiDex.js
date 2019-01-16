@@ -1,17 +1,23 @@
-const Ae = require('@aeternity/aepp-sdk').Universal;
-const Crypto = require('@aeternity/aepp-sdk').Crypto;
+const config = require('./config');
+const { getAddress } = require('./utils');
+const { getWallets } = require('./wallets');
 
-const config = {
-    host: 'http://localhost:3001/',
-    internalHost: 'http://localhost:3001/internal/',
-    weidexSourcePath: './contracts/WeiDex.aes',
-    erc20SourcePath: './contracts/mocks/ERC20.aes',
-    gas: 200000,
-    ttl: 55,
-};
+const {
+    init,
+    mint,
+    deposit,
+    withdraw,
+    getBalanceOf,
+    getLockedBalanceOf,
+    getAvailableBalanceOf,
+    placeOrder,
+    getOrder,
+} = require('./wrapper');
 
-let weidex;
-let erc20;
+const { deployContract } = require('./deploy');
+
+let exchangeAddress;
+let tokenAddress;
 
 describe('WeiDex Contract', () => {
     let owner;
@@ -19,188 +25,121 @@ describe('WeiDex Contract', () => {
     let bob;
 
     before(async () => {
-        owner = await Ae({
-            url: config.host,
-            internalUrl: config.internalHost,
-            keypair: wallets[0],
-            nativeMode: true,
-            networkId: 'ae_devnet',
-        });
+        const wallets = await getWallets();
+        owner = wallets[0];
+        alice = wallets[1];
+        bob = wallets[2];
 
-        alice = await Ae({
-            url: config.host,
-            internalUrl: config.internalHost,
-            keypair: wallets[1],
-            nativeMode: true,
-            networkId: 'ae_devnet',
-        });
+        const erc20 = await deployContract(owner, config.erc20SourcePath);
+        assert(erc20.instance, 'could not deploy the ERC20 contract');
 
-        bob = await Ae({
-            url: config.host,
-            internalUrl: config.internalHost,
-            keypair: wallets[2],
-            nativeMode: true,
-            networkId: 'ae_devnet',
-        });
+        const weidex = await deployContract(owner, config.weidexSourcePath);
+        assert(weidex.instance, 'could not deploy the WeiDex contract');
 
-        erc20 = await deployContract(owner, config.erc20SourcePath);
-        weidex = await deployContract(owner, config.weidexSourcePath);
-        await mint(owner, getAddress(wallets[1].publicKey), 10000);
-        await mint(owner, getAddress(wallets[2].publicKey), 10000);
-    });
+        tokenAddress = getAddress(erc20.instance.address);
+        exchangeAddress = getAddress(weidex.instance.address);
 
-    it('should deploy ERC20 contract', async () => {
-        assert(erc20.instance, 'could not deploy the ERC20 contract'); // Check it is deployed
-    });
+        init(weidex, erc20);
 
-    it('should deploy WeiDex contract', async () => {
-        assert(weidex.instance, 'could not deploy the WeiDex contract'); // Check it is deployed
+        await mint(owner, alice.addr, 10000);
+        await mint(owner, bob.addr, 10000);
     });
 
     it('should deposit erc20 tokens', async () => {
-        const token = getAddress(erc20.instance.address);
-        const user = getAddress(wallets[1].publicKey);
+        const token = tokenAddress;
+        const user = alice.addr;
         const amount = 100;
 
         const balanceBefore = await getBalanceOf(alice, user, token);
-        assert(balanceBefore === 0, 'balance should be 0 at first.');
+        assert.equal(balanceBefore, 0);
 
         const result = await deposit(alice, token, amount, user, user, 0);
         assert(result, 'could not deposit');
 
         const balanceAfter = await getBalanceOf(alice, user, token);
-        assert(
-            balanceAfter === balanceBefore + amount,
-            'balance should be increased with the value of deposit'
-        );
+        assert.equal(balanceAfter, balanceBefore + amount);
     });
 
     it('should deposit ae', async () => {
-        const token = '0x0000000000000000000000000000000000000000000000000000000000000000';
-        const user = getAddress(wallets[1].publicKey);
+        const token = 0;
+        const user = alice.addr;
         const amount = 100;
 
         const balanceBefore = await getBalanceOf(alice, user, token);
-        assert(balanceBefore === 0, 'balance should be 0 at first.');
+        assert.equal(balanceBefore, 0);
+
+        const availableBalanceBefore = await getAvailableBalanceOf(alice, user, token);
+        assert.equal(availableBalanceBefore, 0);
 
         const result = await deposit(alice, token, amount, user, user, 100);
         assert(result, 'could not deposit');
 
         const balanceAfter = await getBalanceOf(alice, user, token);
-        assert(
-            balanceAfter === balanceBefore + amount,
-            'balance should be increased with the value of deposit'
-        );
+        assert.equal(balanceAfter, balanceBefore + amount);
+
+        const availableBalanceAfter = await getAvailableBalanceOf(alice, user, token);
+        assert.equal(availableBalanceAfter, availableBalanceBefore + amount);
     });
 
     it('should withdraw erc20 tokens', async () => {
-        const token = getAddress(erc20.instance.address);
-        const user = getAddress(wallets[1].publicKey);
+        const token = tokenAddress;
+        const user = alice.addr;
         const initialAmount = 100;
         const amount = 50;
 
         const balanceBefore = await getBalanceOf(alice, user, token);
-        assert(balanceBefore === initialAmount, 'balance should be initial amount at first');
+        assert.equal(balanceBefore, initialAmount);
 
         const result = await withdraw(alice, token, amount);
         assert(result, 'could not withdraw');
 
         const balanceAfter = await getBalanceOf(alice, user, token);
-        assert(
-            balanceAfter === balanceBefore - amount,
-            'balance should be decreased with the value of withdraw'
-        );
+        assert(balanceAfter, balanceBefore - amount);
     });
 
     it('should withdraw ae', async () => {
-        const token = '0x0000000000000000000000000000000000000000000000000000000000000000';
-        const user = getAddress(wallets[1].publicKey);
+        const token = 0;
+        const user = alice.addr;
         const initialAmount = 100;
         const amount = 50;
 
         const balanceBefore = await getBalanceOf(alice, user, token);
-        assert(balanceBefore === initialAmount, 'balance should be initial amount at first');
+        assert.equal(balanceBefore, initialAmount);
 
         const result = await withdraw(alice, token, amount);
         assert(result, 'could not withdraw');
 
         const balanceAfter = await getBalanceOf(alice, user, token);
-        assert(
-            balanceAfter === balanceBefore - amount,
-            'balance should be decreased with the value of withdraw'
+        assert(balanceAfter, balanceBefore - amount);
+    });
+
+    it('should place order', async () => {
+        const inputOrder = {
+            sellAmount: 10,
+            buyAmount: 20,
+            expiration: 1557887965572,
+            sellToken: 0,
+            buyToken: tokenAddress,
+            hash: '0x6378dda51724bca215ddc353efa47107dd942b67df300b533f8f556caed0ffed',
+        };
+
+        const lockedBalanceBefore = await getLockedBalanceOf(
+            alice,
+            alice.addr,
+            inputOrder.sellToken
         );
+        assert.equal(lockedBalanceBefore, 0);
+
+        const result = await placeOrder(alice, inputOrder);
+        assert(result, 'order should be placed');
+
+        const lockedBalanceAfter = await getLockedBalanceOf(
+            alice,
+            alice.addr,
+            inputOrder.sellToken
+        );
+        assert.equal(lockedBalanceAfter, inputOrder.sellAmount);
+
+        const outputOrder = await getOrder(alice, alice.addr, inputOrder.hash);
     });
 });
-
-async function deployContract(owner, path) {
-    const source = utils.readFileRelative(path, 'utf-8');
-    const compiled = await owner.contractCompile(source, {
-        // Compile it
-        gas: config.gas,
-    });
-    const instance = await compiled.deploy({
-        // Deploy it
-        options: {
-            ttl: config.ttl,
-        },
-        abi: 'sophia',
-    });
-
-    return { compiled, instance };
-}
-
-function getAddress(publicKey) {
-    let address = '0x' + Crypto.decodeBase58Check(publicKey.split('_')[1]).toString('hex');
-    return address;
-}
-
-async function mint(caller, address, amount) {
-    const minted = await callContract(caller, 'mint', erc20, `(${address},${amount})`);
-    const result = await minted.decode('bool');
-    assert(result.value, 'could not mint.');
-    return result.value;
-}
-
-async function deposit(caller, token, amount, beneficiary, referral, ae) {
-    const deposited = await callContract(
-        caller,
-        'deposit',
-        weidex,
-        `(${token},${amount},${beneficiary},${referral})`,
-        ae
-    );
-    const result = await deposited.decode('bool');
-    return result.value;
-}
-
-async function withdraw(caller, token, amount) {
-    const withdraw = await callContract(caller, 'withdraw', weidex, `(${token},${amount})`);
-    const result = await withdraw.decode('bool');
-    return result.value;
-}
-
-async function getBalanceOf(caller, user, token) {
-    const balance = await callContract(caller, 'balanceOf', weidex, `(${user},${token})`);
-    const result = await balance.decode('int');
-    return result.value;
-}
-
-async function callContract(caller, fn, contract, args, value) {
-    let options = { ttl: config.ttl };
-    if (typeof value != 'undefined') {
-        options = { ...options, amount: value };
-    }
-    const result = await caller.contractCall(
-        contract.compiled.bytecode,
-        'sophia',
-        contract.instance.address,
-        fn,
-        {
-            args,
-            options,
-            abi: 'sophia',
-        }
-    );
-
-    return result;
-}
