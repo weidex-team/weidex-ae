@@ -17,6 +17,7 @@ module.exports = {
     cancelOrder,
     getOrders,
     getOrderHistory,
+    getRefferal,
 };
 
 function init(exchange, token) {
@@ -74,6 +75,12 @@ async function getAvailableBalanceOf(caller, user, token) {
         `(${user},${token})`
     );
     const result = await availableBalance.decode('int');
+    return result.value;
+}
+
+async function getRefferal(caller, user) {
+    const availableBalance = await callContract(caller, 'getRefferal', weidex, `(${user})`);
+    const result = await availableBalance.decode('address');
     return result.value;
 }
 
