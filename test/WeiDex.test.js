@@ -1,6 +1,6 @@
-const config = require('./config');
-const { getAddress } = require('./utils');
-const { getWallets } = require('./wallets');
+const config = require('./utils/config');
+const { getAddress } = require('./utils/utils');
+const { getWallets } = require('./utils/wallets');
 
 const {
     init,
@@ -15,9 +15,9 @@ const {
     cancelOrder,
     getOrders,
     getOrderHistory,
-} = require('./wrapper');
+} = require('./utils/wrapper');
 
-const { deployContract } = require('./deploy');
+const { deployContract } = require('./utils/deploy');
 
 let exchangeAddress;
 let tokenAddress;
@@ -34,7 +34,15 @@ describe('WeiDex Contract', () => {
         const erc20 = await deployContract(owner, config.erc20SourcePath);
         assert(erc20.instance, 'could not deploy the ERC20 contract');
 
-        const weidex = await deployContract(owner, config.weidexSourcePath);
+        const rawMakerFee = 10000000000000000; // 10^18 = 100%, 10^17 = 10%, 10^16 = 1% ....
+        const rawTakerFee = 10000000000000000; // 10^18 = 100%, 10^17 = 10%, 10^16 = 1% ....
+        const feeAccount = owner.addr;
+
+        const weidex = await deployContract(
+            owner,
+            config.weidexSourcePath,
+            `(${feeAccount}, ${rawMakerFee}, ${rawTakerFee})`
+        );
         assert(weidex.instance, 'could not deploy the WeiDex contract');
 
         tokenAddress = getAddress(erc20.instance.address);
