@@ -19,11 +19,19 @@ const Deployer = require('forgae').Deployer;
 const gasLimit = 1000000;
 
 const deploy = async (network, privateKey) => {
-	let deployer = new Deployer(network, privateKey)
+    let deployer = new Deployer(network, privateKey);
 
-	let result = await deployer.deploy("./contracts/WeiDex.aes")
+    const rawMakerFee = 10000000000000000; // 10^18 = 100%, 10^17 = 10%, 10^16 = 1% ....
+    const rawTakerFee = 10000000000000000; // 10^18 = 100%, 10^17 = 10%, 10^16 = 1% ....
+    const feeAccount = '0x575f81ffb0a297b7725dc671da0b1769b1fc5cbe45385c7b5ad1fc2eaf1d609d';
+
+    let result = await deployer.deploy(
+        './contracts/WeiDex.aes',
+        gasLimit,
+        `(${feeAccount}, ${rawMakerFee}, ${rawTakerFee})`
+    );
 };
 
 module.exports = {
-	deploy
+    deploy,
 };

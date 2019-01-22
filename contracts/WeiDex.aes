@@ -5,16 +5,24 @@ contract Token =
 contract WeiDex =
   record state =
     {
+      makerFee : int,
+      takerFee : int,
+      referralFee: int,
       tokenOrders : map(address, map(string, order)),
       users : map(address, user),
-      referrals: map(address, address)
+      referrals: map(address, address),
+      feeAccount: address
     }
 
-  public stateful function init() =
+  public stateful function init(_feeAccount : address, _makerFee : int, _takerFee : int) =
     {
+        makerFee = _makerFee,
+        takerFee = _takerFee,
+        referralFee = 200000000000000000, // 20%
         tokenOrders = {},
         users={},
-        referrals = {}
+        referrals = {},
+        feeAccount = _feeAccount
       }
 
   record user =
@@ -136,10 +144,14 @@ contract WeiDex =
     require(availableBalanceOf(maker, order.sellToken) >= takerReceivedAmount, "TAKE_INSUFFICIENT_FUNDS_MAKER")
 
     // update user balances
-    increaseUserBalance(maker, order.buyToken, takerSellAmount)
-    increaseUserBalance(taker, order.sellToken, takerReceivedAmount)
     decreaseUserBalance(maker, order.sellToken, takerReceivedAmount)
     decreaseUserBalance(taker, order.buyToken, takerSellAmount)
+    increaseBalanceAfterFee(maker, order.buyToken, takerSellAmount, state.makerFee)
+    increaseBalanceAfterFee(taker, order.sellToken, takerReceivedAmount, state.takerFee)
+
+    //increaseUserBalance(maker, order.buyToken, takerSellAmount)
+    //increaseUserBalance(taker, order.sellToken, takerReceivedAmount)
+
 
     // update order history
     let takerHistoryOrder = getTakerHistoryOrder(takerReceivedAmount, taker, order)
@@ -300,6 +312,10 @@ contract WeiDex =
     let user : user = lookupByAddress(who, users, {balances={}, lockedBalances={}, orderHistory= {}, orders={}})
     user
 
+  private function getRefferal(who : address) : address =
+    let referral : address = lookupByAddress(who, state.referrals, #0)
+    referral
+
   private function getOrder(who : address, hash : string) : order =
     let user : user = getUser(who, state.users)
     require(userHasOrder(hash, user.orders), "GET_ORDER_INVALID_ORDER")
@@ -372,3 +388,21 @@ contract WeiDex =
   private function require(b : bool, err : string) =
     if(!b)
       abort(err)
+
+  private function increaseBalanceAfterFee(who : address, token : address, amount : int, fee : int) =
+    let feeAmount : int = getFeeAmount(amount, fee)
+    let increaseAmount : int = sub(amount, feeAmount)
+
+    if(userHasReferrer(who))
+      let referral : address = getRefferal(who)
+      let referralFee : int = getFeeAmount(feeAmount, state.referralFee)
+      let exchangeFee : int = sub(feeAmount, referralFee)
+      increaseUserBalance(who, token, increaseAmount)
+      increaseUserBalance(state.feeAccount, token, exchangeFee)
+      increaseUserBalance(referral, token, referralFee)
+    else
+      increaseUserBalance(who, token, increaseAmount)
+      increaseUserBalance(state.feeAccount, token, feeAmount)
+
+
+
