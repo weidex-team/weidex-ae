@@ -2,6 +2,7 @@ const config = require('./config');
 const { arraysEqual } = require('./utils');
 
 let weidex;
+let weidexAddress;
 let erc20;
 
 module.exports = {
@@ -18,10 +19,12 @@ module.exports = {
     getOrders,
     getOrderHistory,
     getRefferal,
+    getOpenOrdersByTokenAddress,
 };
 
 function init(exchange, token) {
     weidex = exchange;
+    weidexAddress = exchange.instance.address;
     erc20 = token;
 }
 
@@ -50,17 +53,51 @@ async function withdraw(caller, token, amount) {
     return result.value;
 }
 
+async function placeOrder(caller, order) {
+    const balance = await callContract(
+        caller,
+        'placeOrder',
+        weidex,
+        `(${order.sellAmount},${order.buyAmount},${order.expiration},
+          ${order.sellToken},${order.buyToken},"${order.hash}")`
+    );
+    const result = await balance.decode('bool');
+    return result.value;
+}
+
+async function takeOrder(caller, user, hash, takerSellAmount) {
+    const balance = await callContract(
+        caller,
+        'takeOrder',
+        weidex,
+        `(${user},"${hash}",${takerSellAmount})`
+    );
+    const result = await balance.decode('bool');
+    return result.value;
+}
+
+async function cancelOrder(caller, hash) {
+    const balance = await callContract(caller, 'cancelOrder', weidex, `("${hash}")`);
+    const result = await balance.decode('bool');
+    return result.value;
+}
+
 async function getBalanceOf(caller, user, token) {
-    const balance = await callContract(caller, 'balanceOf', weidex, `(${user},${token})`);
+    const balance = await callContractStatic(
+        caller,
+        'balanceOf',
+        weidexAddress,
+        `(${user},${token})`
+    );
     const result = await balance.decode('int');
     return result.value;
 }
 
 async function getLockedBalanceOf(caller, user, token) {
-    const lockedBalance = await callContract(
+    const lockedBalance = await callContractStatic(
         caller,
         'lockedBalanceOf',
-        weidex,
+        weidexAddress,
         `(${user},${token})`
     );
     const result = await lockedBalance.decode('int');
@@ -68,10 +105,10 @@ async function getLockedBalanceOf(caller, user, token) {
 }
 
 async function getAvailableBalanceOf(caller, user, token) {
-    const availableBalance = await callContract(
+    const availableBalance = await callContractStatic(
         caller,
         'availableBalanceOf',
-        weidex,
+        weidexAddress,
         `(${user},${token})`
     );
     const result = await availableBalance.decode('int');
@@ -79,13 +116,18 @@ async function getAvailableBalanceOf(caller, user, token) {
 }
 
 async function getRefferal(caller, user) {
-    const availableBalance = await callContract(caller, 'getRefferal', weidex, `(${user})`);
+    const availableBalance = await callContractStatic(
+        caller,
+        'getRefferal',
+        weidexAddress,
+        `(${user})`
+    );
     const result = await availableBalance.decode('address');
     return result.value;
 }
 
 async function getOrderHistory(caller, user) {
-    const order = await callContract(caller, 'getOrderHistory', weidex, `(${user})`);
+    const order = await callContractStatic(caller, 'getOrderHistory', weidexAddress, `(${user})`);
     const result = await order.decode(
         'list((string,(int,int,int,int,int,address,address,address,address,string)))'
     );
@@ -93,8 +135,18 @@ async function getOrderHistory(caller, user) {
 }
 
 async function getOrders(caller, user, token) {
-    const userOrders = await callContract(caller, 'getUserOpenOrders', weidex, `(${user})`);
-    const tokenOrders = await callContract(caller, 'getTokenOpenOrders', weidex, `${token}`);
+    const userOrders = await callContractStatic(
+        caller,
+        'getUserOpenOrders',
+        weidexAddress,
+        `(${user})`
+    );
+    const tokenOrders = await callContractStatic(
+        caller,
+        'getTokenOpenOrders',
+        weidexAddress,
+        `${token}`
+    );
     const userOrdersResult = await userOrders.decode(
         'list((string,(int,int,int,int,int,address,address,address,address,string)))'
     );
@@ -131,32 +183,16 @@ function orderListHelper(list) {
     return orders;
 }
 
-async function placeOrder(caller, order) {
-    const balance = await callContract(
+async function getOpenOrdersByTokenAddress(caller, user, token) {
+    const orders = await callContractStatic(
         caller,
-        'placeOrder',
-        weidex,
-        `(${order.sellAmount},${order.buyAmount},${order.expiration},
-          ${order.sellToken},${order.buyToken},"${order.hash}")`
+        'getOpenOrdersByTokenAddress',
+        weidexAddress,
+        `(${user}, ${token})`
     );
-    const result = await balance.decode('bool');
-    return result.value;
-}
-
-async function takeOrder(caller, user, hash, takerSellAmount) {
-    const balance = await callContract(
-        caller,
-        'takeOrder',
-        weidex,
-        `(${user},"${hash}",${takerSellAmount})`
+    const result = await orders.decode(
+        'list((string,(int,int,int,int,int,address,address,address,address,string)))'
     );
-    const result = await balance.decode('bool');
-    return result.value;
-}
-
-async function cancelOrder(caller, hash) {
-    const balance = await callContract(caller, 'cancelOrder', weidex, `("${hash}")`);
-    const result = await balance.decode('bool');
     return result.value;
 }
 
@@ -176,6 +212,15 @@ async function callContract(caller, fn, contract, args, value) {
             abi: 'sophia',
         }
     );
+
+    return result;
+}
+
+async function callContractStatic(caller, fn, contract, args) {
+    const result = await caller.contractCallStatic(contract, 'sophia-address', fn, {
+        args,
+        abi: 'sophia',
+    });
 
     return result;
 }

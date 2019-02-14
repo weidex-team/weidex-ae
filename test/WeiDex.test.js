@@ -15,6 +15,7 @@ const {
     cancelOrder,
     getOrders,
     getOrderHistory,
+    getOpenOrdersByTokenAddress,
 } = require('./utils/wrapper');
 
 const { deployContract } = require('./utils/deploy');
@@ -141,6 +142,12 @@ describe('WeiDex Contract', () => {
 
         const result = await placeOrder(alice, inputOrder);
         assert(result, 'order should be placed');
+
+        const aliceOpenOrders = await getOpenOrdersByTokenAddress(alice, alice.addr, tokenAddress);
+        assert.equal(aliceOpenOrders.length, 1);
+
+        const bobOpenOrders = await getOpenOrdersByTokenAddress(alice, bob.addr, tokenAddress);
+        assert.equal(bobOpenOrders.length, 0);
 
         const lockedBalanceAfter = await getLockedBalanceOf(
             alice,

@@ -215,6 +215,10 @@ contract WeiDex =
     let lockedBalances : list((address, int)) = Map.to_list(user.lockedBalances)
     lockedBalances
 
+  function getOpenOrdersByTokenAddress(who : address, token : address) : list((string,order)) =
+    let l : list((string, order)) = getUserOpenOrders(who)
+    filter(openOrders, l, token)
+
   /************************PRIVATE STATEFUL FUNCTIONS*****************************/
   private stateful function addReferral(user : address, referral : address) =
     put(state{referrals[user] = referral})
@@ -354,6 +358,25 @@ contract WeiDex =
                     hash = "0"
                   }
       Some(x) => x
+
+  /************************HELPER FUNCTIONS*****************************/
+  function filter(f : ('a, address) => bool, l : list('a), token : address) = filter'(f, l, token, [])
+  private function filter'(f : ('a, address) => bool, l : list('a), token : address, acc : list('a)) =
+    switch(l)
+      [] => acc
+      e :: g =>
+        if(f(e, token))
+          filter'(f, g, token, e :: acc)
+        else
+          filter'(f, g, token, acc)
+
+  private function openOrders(order : (string,order), tokenAddress : address) : bool =
+    let o = pair_second(order)
+    o.buyToken == tokenAddress || o.sellToken == tokenAddress
+
+  function pair_second(tuple) =
+    switch(tuple)
+      (_, e) => e
 
   /************************SAFE MATH*****************************/
   private function add(a : int, b : int) : int =
