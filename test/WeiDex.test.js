@@ -51,14 +51,14 @@ describe('WeiDex Contract', () => {
 
         init(weidex, erc20);
 
-        await mint(owner, alice.addr, 10000);
-        await mint(owner, bob.addr, 10000);
+        await mint(owner, alice.addr, 100000000);
+        await mint(owner, bob.addr, 100000000);
     });
 
     it('should deposit erc20 tokens', async () => {
         const token = tokenAddress;
         const user = alice.addr;
-        const amount = 100;
+        const amount = 1000000;
 
         const balanceBefore = await getBalanceOf(alice, user, token);
         assert.equal(balanceBefore, 0);
@@ -73,7 +73,7 @@ describe('WeiDex Contract', () => {
     it('should deposit ae', async () => {
         const token = 0;
         const user = alice.addr;
-        const amount = 100;
+        const amount = 1000000;
 
         const balanceBefore = await getBalanceOf(alice, user, token);
         assert.equal(balanceBefore, 0);
@@ -81,7 +81,7 @@ describe('WeiDex Contract', () => {
         const availableBalanceBefore = await getAvailableBalanceOf(alice, user, token);
         assert.equal(availableBalanceBefore, 0);
 
-        const result = await deposit(alice, token, amount, user, user, 100);
+        const result = await deposit(alice, token, amount, user, user, amount);
         assert(result, 'could not deposit');
 
         const balanceAfter = await getBalanceOf(alice, user, token);
@@ -94,8 +94,8 @@ describe('WeiDex Contract', () => {
     it('should withdraw erc20 tokens', async () => {
         const token = tokenAddress;
         const user = alice.addr;
-        const initialAmount = 100;
-        const amount = 50;
+        const initialAmount = 1000000;
+        const amount = 500;
 
         const balanceBefore = await getBalanceOf(alice, user, token);
         assert.equal(balanceBefore, initialAmount);
@@ -110,8 +110,8 @@ describe('WeiDex Contract', () => {
     it('should withdraw ae', async () => {
         const token = 0;
         const user = alice.addr;
-        const initialAmount = 100;
-        const amount = 50;
+        const initialAmount = 1000000;
+        const amount = 500;
 
         const balanceBefore = await getBalanceOf(alice, user, token);
         assert.equal(balanceBefore, initialAmount);
@@ -125,8 +125,8 @@ describe('WeiDex Contract', () => {
 
     it('should place order', async () => {
         const inputOrder = {
-            sellAmount: 10,
-            buyAmount: 20,
+            sellAmount: 10000,
+            buyAmount: 20000,
             expiration: 1557887965572,
             sellToken: 0,
             buyToken: tokenAddress,
@@ -184,12 +184,12 @@ describe('WeiDex Contract', () => {
 
     it('should fully take order', async () => {
         const token = tokenAddress;
-        const depositAmount = 100;
+        const depositAmount = 1000000;
         const taker = bob.addr;
-        const takerSellAmount = 20;
+        const takerSellAmount = 20000;
         const inputOrder = {
-            sellAmount: 10,
-            buyAmount: 20,
+            sellAmount: 10000,
+            buyAmount: 20000,
             expiration: 1557887965572,
             sellToken: 0,
             buyToken: tokenAddress,
@@ -211,25 +211,25 @@ describe('WeiDex Contract', () => {
         // filled amount is the amount received by the maker
         const makerHistory = await getOrderHistory(alice, alice.addr);
         assert.equal(makerHistory.length, 2); // the cancelled order is also in the history
-        assert.equal(makerHistory[0].filled, 20);
+        assert.equal(makerHistory[0].filled, 20000);
         assert.equal(makerHistory[0].sellToken, 0);
 
         // taker should have new order in the history
         // filled amount is the amount received by the taker
         const takerHistory = await getOrderHistory(bob, bob.addr);
         assert.equal(takerHistory.length, 1);
-        assert.equal(takerHistory[0].filled, 10);
+        assert.equal(takerHistory[0].filled, 10000);
         assert.equal(takerHistory[0].buyToken, 0);
     });
 
     it('should partially take order', async () => {
         const token = tokenAddress;
-        const depositAmount = 100;
+        const depositAmount = 1000000;
         const taker = bob.addr;
-        const takerSellAmount = 10;
+        const takerSellAmount = 10000;
         const inputOrder = {
-            sellAmount: 10,
-            buyAmount: 20,
+            sellAmount: 10000,
+            buyAmount: 20000,
             expiration: 1557887965572,
             sellToken: 0,
             buyToken: tokenAddress,
@@ -247,20 +247,20 @@ describe('WeiDex Contract', () => {
         assert.equal(valid, true);
         assert.equal(orders.length, 1);
         assert.equal(orders[0].status, 1);
-        assert.equal(orders[0].filled, 10);
+        assert.equal(orders[0].filled, 10000);
 
         // maker should have new order in the history
         // filled amount is the amount received by the maker
         const makerHistory = await getOrderHistory(alice, alice.addr);
         assert.equal(makerHistory.length, 3); // the cancelled order is also in the history
-        assert.equal(makerHistory[1].filled, 10);
+        assert.equal(makerHistory[1].filled, 10000);
         assert.equal(makerHistory[1].sellToken, 0);
 
         // taker should have new order in the history
         // filled amount is the amount received by the taker
         const takerHistory = await getOrderHistory(bob, bob.addr);
         assert.equal(takerHistory.length, 2);
-        assert.equal(takerHistory[1].filled, 5);
+        assert.equal(takerHistory[1].filled, 5000);
         assert.equal(takerHistory[1].buyToken, 0);
     });
 });
