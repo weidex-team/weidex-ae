@@ -186,12 +186,12 @@ contract WeiDex =
     let balances = lookupByAddress(token, user.balances, {fullBalance = 0, availableBalance = 0})
     balances.availableBalance
 
-  public function getUserOpenOrders(who : address) : list((string, order)) =
+  public function getOpenOrdersByUser(who : address) : list((string, order)) =
     let user : user = getUser(who, state.users)
     let openOrders : list((string, order)) = Map.to_list(user.orders)
     openOrders
 
-  public function getTokenOpenOrders(token : address) : list((string, order)) =
+  public function getOpenOrdersByToken(token : address) : list((string, order)) =
     let tokenOrders : list((string, order)) = Map.to_list(state.tokenOrders[token])
     tokenOrders
 
@@ -206,11 +206,11 @@ contract WeiDex =
     balances
 
   function getSellOpenOrdersByTokenAddress(who : address, token : address) : list((string,order)) =
-    let l : list((string, order)) = getUserOpenOrders(who)
+    let l : list((string, order)) = getOpenOrdersByUser(who)
     filter(openSellOrders, l, token)
 
   function getBuyOpenOrdersByTokenAddress(who : address, token : address) : list((string,order)) =
-    let l : list((string, order)) = getUserOpenOrders(who)
+    let l : list((string, order)) = getOpenOrdersByUser(who)
     filter(openBuyOrders, l, token)
 
   /************************PRIVATE STATEFUL FUNCTIONS*****************************/

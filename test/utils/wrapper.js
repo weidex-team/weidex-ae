@@ -133,13 +133,13 @@ async function getOrderHistory(caller, user) {
 async function getOrders(caller, user, token) {
     const userOrders = await callContractStatic(
         caller,
-        'getUserOpenOrders',
+        'getOpenOrdersByUser',
         weidexAddress,
         `(${user})`
     );
     const tokenOrders = await callContractStatic(
         caller,
-        'getTokenOpenOrders',
+        'getOpenOrdersByToken',
         weidexAddress,
         `${token}`
     );
