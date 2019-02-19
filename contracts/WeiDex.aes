@@ -25,10 +25,15 @@ contract WeiDex =
         feeAccount = _feeAccount
       }
 
+  record balance =
+    {
+      fullBalance : int,
+      availableBalance : int
+    }
+
   record user =
     {
-      balances : map(address, int),
-      lockedBalances : map(address, int),
+      balances : map(address, balance),
       orderHistory : map(string, order),
       orders : map(string, order)
     }
@@ -64,7 +69,7 @@ contract WeiDex =
     else
       require(token.transferFrom(user, Contract.address, value), "DEPOSIT_TOKEN_TRANSFER_FAIL")
 
-    increaseUserBalance(user, token.address, value)
+    increaseBalance(user, token.address, value)
 
     if(!userHasReferrer(user))
       addReferral(user, referral)
@@ -77,7 +82,7 @@ contract WeiDex =
 
     require(availableBalanceOf(user, token.address) >= amount, "WITHDRAW_INSUFFICIENT_FUNDS")
 
-    decreaseUserBalance(user, token.address, amount)
+    decreaseBalance(user, token.address, amount)
 
     if(token.address == #0)
       Chain.spend(user, amount)
@@ -113,7 +118,7 @@ contract WeiDex =
         taker = #0,
         hash = hash}
 
-    increaseUserLockedBalance(maker, sellToken, sellAmount)
+    decreaseAvailableBalance(maker, sellToken, sellAmount)
     addUserOrder(maker, hash, order)
     addTokenOrder(sellToken, hash, order)
     true
@@ -126,7 +131,7 @@ contract WeiDex =
     require(foundOrder.status < 2, "CANCEL_INVALID") // user should not be able to cancel fully filled or already cancelled orders, because his locked balance will be decreased
     updateUserOrderStatus(maker, hash, 3)
     let updatedOrder : order = updateTokenOrderStatus(hash, foundOrder, 3)
-    decreaseUserLockedBalance(maker, foundOrder.sellToken, foundOrder.sellAmount)
+    increaseAvailableBalance(maker, foundOrder.sellToken, foundOrder.sellAmount)
     removeOrder(maker, foundOrder.sellToken, hash)
     addOrderHistory(maker, hash, updatedOrder)
     true
@@ -144,14 +149,10 @@ contract WeiDex =
     require(availableBalanceOf(maker, order.sellToken) >= takerReceivedAmount, "TAKE_INSUFFICIENT_FUNDS_MAKER")
 
     // update user balances
-    decreaseUserBalance(maker, order.sellToken, takerReceivedAmount)
-    decreaseUserBalance(taker, order.buyToken, takerSellAmount)
+    decreaseBalance(maker, order.sellToken, takerReceivedAmount)
+    decreaseBalance(taker, order.buyToken, takerSellAmount)
     increaseBalanceAfterFee(maker, order.buyToken, takerSellAmount, state.makerFee)
     increaseBalanceAfterFee(taker, order.sellToken, takerReceivedAmount, state.takerFee)
-
-    //increaseUserBalance(maker, order.buyToken, takerSellAmount)
-    //increaseUserBalance(taker, order.sellToken, takerReceivedAmount)
-
 
     // update order history
     let takerHistoryOrder = getTakerHistoryOrder(takerReceivedAmount, taker, order)
@@ -175,21 +176,15 @@ contract WeiDex =
   public function userHasReferrer(user : address) : bool =
     Map.member(user, state.referrals)
 
-  public function balanceOf(who: address, token : address) : int =
+  public function fullBalanceOf(who: address, token : address) : int =
     let user : user = getUser(who, state.users)
-    let balance : int = lookupByAddress(token, user.balances, 0)
-    balance
-
-  public function lockedBalanceOf(who: address, token : address) : int =
-    let user : user = getUser(who, state.users)
-    let lockedBalance : int = lookupByAddress(token, user.lockedBalances, 0)
-    lockedBalance
+    let balances = lookupByAddress(token, user.balances, {fullBalance = 0, availableBalance = 0})
+    balances.fullBalance
 
   public function availableBalanceOf(who: address, token : address) : int =
-    let balance : int = balanceOf(who, token)
-    let lockedBalance : int = lockedBalanceOf(who, token)
-    let availableBalance : int = sub(balance, lockedBalance)
-    availableBalance
+    let user : user = getUser(who, state.users)
+    let balances = lookupByAddress(token, user.balances, {fullBalance = 0, availableBalance = 0})
+    balances.availableBalance
 
   public function getUserOpenOrders(who : address) : list((string, order)) =
     let user : user = getUser(who, state.users)
@@ -205,19 +200,18 @@ contract WeiDex =
     let orderHistory : list((string, order)) = Map.to_list(user.orderHistory)
     orderHistory
 
-  public function getUserBalances(who : address) : list((address, int)) =
+  public function getUserBalances(who : address) : list((address, balance)) =
     let user : user = getUser(who, state.users)
-    let balances : list((address, int)) = Map.to_list(user.balances)
+    let balances : list((address, balance)) = Map.to_list(user.balances)
     balances
 
-  public function getUserLockedBalances(who : address) : list((address, int)) =
-    let user : user = getUser(who, state.users)
-    let lockedBalances : list((address, int)) = Map.to_list(user.lockedBalances)
-    lockedBalances
-
-  function getOpenOrdersByTokenAddress(who : address, token : address) : list((string,order)) =
+  function getSellOpenOrdersByTokenAddress(who : address, token : address) : list((string,order)) =
     let l : list((string, order)) = getUserOpenOrders(who)
-    filter(openOrders, l, token)
+    filter(openSellOrders, l, token)
+
+  function getBuyOpenOrdersByTokenAddress(who : address, token : address) : list((string,order)) =
+    let l : list((string, order)) = getUserOpenOrders(who)
+    filter(openBuyOrders, l, token)
 
   /************************PRIVATE STATEFUL FUNCTIONS*****************************/
   private stateful function addReferral(user : address, referral : address) =
@@ -261,41 +255,40 @@ contract WeiDex =
         {[hash] = filledOrder}] @ previousOrders = previousOrders{[hash] = filledOrder}}
     put(state{tokenOrders=newTokenOrders})
 
-  private stateful function updateBalance(who : address, balance : map(address,int)) =
-    let newUser : user =
-      state.users[who={balances={}, lockedBalances={}, orderHistory= {}, orders={}}]{balances = balance}
+  private stateful function updateBalance(who : address, token : address, newBalance : balance) =
+    let defaultUser : user = {balances={}, orderHistory= {}, orders={}}
+    let newUserBalances : map(address, balance) = state.users[who=defaultUser].balances{[token] = newBalance}
+    let newUser : user = state.users[who=defaultUser]{balances = newUserBalances}
     let newUsers : map(address, user) = state.users{[who] = newUser}
     put(state{users = newUsers})
 
-  private stateful function updateLockedBalance(who : address, lockedBalances : map(address,int)) =
-    let newUser : user =
-      state.users[who={balances={}, lockedBalances={}, orderHistory= {}, orders={}}]{lockedBalances = lockedBalances}
-    let newUsers : map(address, user) = state.users{[who] = newUser}
-    put(state{users = newUsers})
+  private stateful function decreaseFullBalance(who : address, token : address, amount : int) =
+    let newUserBalance : balance = state.users[who].balances[token]{fullBalance @ f = sub(f, amount)}
+    updateBalance(who, token, newUserBalance)
 
-  private stateful function decreaseUserBalance(who : address, token : address, amount : int) =
-    let currentBalance : int = balanceOf(who, token)
-    let newUserBalance : map(address,int) =
-      state.users[who={balances={}, lockedBalances={}, orderHistory= {}, orders={}}].balances{[token] = sub(currentBalance, amount)}
-    updateBalance(who, newUserBalance)
+  private stateful function increaseBalance(who : address, token : address, amount : int) =
+    increaseFullBalance(who, token, amount)
+    increaseAvailableBalance(who, token, amount)
 
-  private stateful function increaseUserBalance(who : address, token : address, amount : int) =
-    let currentBalance : int = balanceOf(who, token)
-    let newUserBalance : map(address,int) =
-      state.users[who={balances={}, lockedBalances={}, orderHistory= {}, orders={}}].balances{[token] = add(currentBalance, amount)}
-    updateBalance(who, newUserBalance)
+  private stateful function decreaseBalance(who : address, token : address, amount : int) =
+    decreaseFullBalance(who, token, amount)
+    decreaseAvailableBalance(who, token, amount)
 
-  private stateful function decreaseUserLockedBalance(who : address, token : address, amount : int) =
-    let currentLockedBalance : int = lockedBalanceOf(who, token)
-    let newLockedBalance : map(address,int) =
-      state.users[who={balances={}, lockedBalances={}, orderHistory= {}, orders={}}].lockedBalances{[token] = sub(currentLockedBalance, amount)}
-    updateLockedBalance(who, newLockedBalance)
+  private stateful function increaseFullBalance(who : address, token : address, amount : int) =
+    let defaultUser : user = {balances = {}, orderHistory = {}, orders = {}}
+    let defaultBalance  : balance = {fullBalance = 0, availableBalance = 0}
+    let newUserBalance : balance = state.users[who=defaultUser].balances[token=defaultBalance]{fullBalance @ b = b + amount}
+    updateBalance(who, token, newUserBalance)
 
-  private stateful function increaseUserLockedBalance(who : address, token : address, amount : int) =
-    let currentLockedBalance : int = lockedBalanceOf(who, token)
-    let newLockedBalance : map(address,int) =
-      state.users[who={balances={}, lockedBalances={}, orderHistory= {}, orders={}}].lockedBalances{[token] = add(currentLockedBalance, amount)}
-    updateLockedBalance(who, newLockedBalance)
+  private stateful function decreaseAvailableBalance(who : address, token : address, amount : int) =
+    let newUserBalance : balance = state.users[who].balances[token]{availableBalance @ a = sub(a, amount)}
+    updateBalance(who, token, newUserBalance)
+
+  private stateful function increaseAvailableBalance(who : address, token : address, amount : int) =
+    let defaultBalances : map(address, balance) = {[token] = {fullBalance = 0, availableBalance = 0}}
+    let defaultUser : user = {balances=defaultBalances, orderHistory= {}, orders={}}
+    let newUserBalance : balance = state.users[who=defaultUser].balances[token]{availableBalance @ a = add(a, amount)}
+    updateBalance(who, token, newUserBalance)
 
   private stateful function deleteUserOrder(user : address, hash : string) =
     let newUser : user = state.users[user]{orders @ o = Map.delete(hash, o)}
@@ -317,7 +310,7 @@ contract WeiDex =
 
   /************************PRIVATE VIEW FUNCTIONS*****************************/
   private function getUser(who : address, users : map(address, user)) : user =
-    let user : user = lookupByAddress(who, users, {balances={}, lockedBalances={}, orderHistory= {}, orders={}})
+    let user : user = lookupByAddress(who, users, {balances={}, orderHistory= {}, orders={}})
     user
 
   private function getOrder(who : address, hash : string) : order =
@@ -370,9 +363,13 @@ contract WeiDex =
         else
           filter'(f, g, token, acc)
 
-  private function openOrders(order : (string,order), tokenAddress : address) : bool =
+  private function openBuyOrders(order : (string,order), tokenAddress : address) : bool =
     let o = pair_second(order)
     o.buyToken == tokenAddress || o.sellToken == tokenAddress
+
+  private function openSellOrders(order : (string,order), tokenAddress : address) : bool =
+    let o = pair_second(order)
+    o.sellToken == tokenAddress
 
   function pair_second(tuple) =
     switch(tuple)
@@ -420,12 +417,9 @@ contract WeiDex =
       let referral : address = getRefferal(who)
       let referralFee : int = getFeeAmount(feeAmount, state.referralFee)
       let exchangeFee : int = sub(feeAmount, referralFee)
-      increaseUserBalance(who, token, increaseAmount)
-      increaseUserBalance(state.feeAccount, token, exchangeFee)
-      increaseUserBalance(referral, token, referralFee)
+      increaseBalance(who, token, increaseAmount)
+      increaseBalance(state.feeAccount, token, exchangeFee)
+      increaseBalance(referral, token, referralFee)
     else
-      increaseUserBalance(who, token, increaseAmount)
-      increaseUserBalance(state.feeAccount, token, feeAmount)
-
-
-
+      increaseBalance(who, token, increaseAmount)
+      increaseBalance(state.feeAccount, token, feeAmount)

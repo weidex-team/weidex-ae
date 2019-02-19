@@ -8,14 +8,13 @@ const {
     deposit,
     withdraw,
     getBalanceOf,
-    getLockedBalanceOf,
     getAvailableBalanceOf,
     placeOrder,
     takeOrder,
     cancelOrder,
     getOrders,
     getOrderHistory,
-    getOpenOrdersByTokenAddress,
+    getBuyOpenOrdersByTokenAddress,
 } = require('./utils/wrapper');
 
 const { deployContract } = require('./utils/deploy');
@@ -133,28 +132,31 @@ describe('WeiDex Contract', () => {
             hash: '0x6378dda51724bca215ddc353efa47107dd942b67df300b533f8f556caed0ffed',
         };
 
-        const lockedBalanceBefore = await getLockedBalanceOf(
+        const availableBalanceBefore = await getAvailableBalanceOf(
             alice,
             alice.addr,
             inputOrder.sellToken
         );
-        assert.equal(lockedBalanceBefore, 0);
 
         const result = await placeOrder(alice, inputOrder);
         assert(result, 'order should be placed');
 
-        const aliceOpenOrders = await getOpenOrdersByTokenAddress(alice, alice.addr, tokenAddress);
+        const aliceOpenOrders = await getBuyOpenOrdersByTokenAddress(
+            alice,
+            alice.addr,
+            tokenAddress
+        );
         assert.equal(aliceOpenOrders.length, 1);
 
-        const bobOpenOrders = await getOpenOrdersByTokenAddress(alice, bob.addr, tokenAddress);
+        const bobOpenOrders = await getBuyOpenOrdersByTokenAddress(alice, bob.addr, tokenAddress);
         assert.equal(bobOpenOrders.length, 0);
 
-        const lockedBalanceAfter = await getLockedBalanceOf(
+        const availableBalanceAfter = await getAvailableBalanceOf(
             alice,
             alice.addr,
             inputOrder.sellToken
         );
-        assert.equal(lockedBalanceAfter, inputOrder.sellAmount);
+        assert.equal(availableBalanceAfter, availableBalanceBefore - inputOrder.sellAmount);
 
         const { orders, valid } = await getOrders(alice, alice.addr, 0);
         assert.equal(valid, true);
@@ -169,14 +171,13 @@ describe('WeiDex Contract', () => {
         const hash = '0x6378dda51724bca215ddc353efa47107dd942b67df300b533f8f556caed0ffed';
         const token = 0;
 
-        const lockedBalanceBefore = await getLockedBalanceOf(alice, alice.addr, token);
-        assert.notEqual(lockedBalanceBefore, 0);
+        const availableBalanceBefore = await getAvailableBalanceOf(alice, alice.addr, token);
 
         const result = await cancelOrder(alice, hash);
         assert(result, 'order should be cancelled');
 
-        const lockedBalanceAfter = await getLockedBalanceOf(alice, alice.addr, token);
-        assert.equal(lockedBalanceAfter, 0);
+        const availableBalanceAfter = await getAvailableBalanceOf(alice, alice.addr, token);
+        assert.equal(availableBalanceAfter, availableBalanceBefore + 10000);
 
         const history = await getOrderHistory(alice, alice.addr);
         assert.equal(history[0].status, 3);

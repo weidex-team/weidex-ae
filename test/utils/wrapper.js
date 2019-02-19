@@ -11,15 +11,16 @@ module.exports = {
     deposit,
     withdraw,
     getBalanceOf,
-    getLockedBalanceOf,
     getAvailableBalanceOf,
     placeOrder,
     takeOrder,
     cancelOrder,
     getOrders,
+    getBalances,
     getOrderHistory,
     getRefferal,
-    getOpenOrdersByTokenAddress,
+    getBuyOpenOrdersByTokenAddress,
+    getSellOpenOrdersByTokenAddress,
 };
 
 function init(exchange, token) {
@@ -85,22 +86,11 @@ async function cancelOrder(caller, hash) {
 async function getBalanceOf(caller, user, token) {
     const balance = await callContractStatic(
         caller,
-        'balanceOf',
+        'fullBalanceOf',
         weidexAddress,
         `(${user},${token})`
     );
     const result = await balance.decode('int');
-    return result.value;
-}
-
-async function getLockedBalanceOf(caller, user, token) {
-    const lockedBalance = await callContractStatic(
-        caller,
-        'lockedBalanceOf',
-        weidexAddress,
-        `(${user},${token})`
-    );
-    const result = await lockedBalance.decode('int');
     return result.value;
 }
 
@@ -112,6 +102,12 @@ async function getAvailableBalanceOf(caller, user, token) {
         `(${user},${token})`
     );
     const result = await availableBalance.decode('int');
+    return result.value;
+}
+
+async function getBalances(caller, user) {
+    const balance = await callContractStatic(caller, 'getUserBalances', weidexAddress, `(${user})`);
+    const result = await balance.decode('list((address, (int, int)))');
     return result.value;
 }
 
@@ -183,10 +179,23 @@ function orderListHelper(list) {
     return orders;
 }
 
-async function getOpenOrdersByTokenAddress(caller, user, token) {
+async function getBuyOpenOrdersByTokenAddress(caller, user, token) {
     const orders = await callContractStatic(
         caller,
-        'getOpenOrdersByTokenAddress',
+        'getBuyOpenOrdersByTokenAddress',
+        weidexAddress,
+        `(${user}, ${token})`
+    );
+    const result = await orders.decode(
+        'list((string,(int,int,int,int,int,address,address,address,address,string)))'
+    );
+    return result.value;
+}
+
+async function getSellOpenOrdersByTokenAddress(caller, user, token) {
+    const orders = await callContractStatic(
+        caller,
+        'getSellOpenOrdersByTokenAddress',
         weidexAddress,
         `(${user}, ${token})`
     );
