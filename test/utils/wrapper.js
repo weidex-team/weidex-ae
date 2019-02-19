@@ -19,8 +19,9 @@ module.exports = {
     getBalances,
     getOrderHistory,
     getRefferal,
-    getBuyOpenOrdersByTokenAddress,
+    getOpenBuyOrdersByUserAndToken,
     getSellOpenOrdersByTokenAddress,
+    getTradeHistoryByToken,
 };
 
 function init(exchange, token) {
@@ -123,7 +124,12 @@ async function getRefferal(caller, user) {
 }
 
 async function getOrderHistory(caller, user) {
-    const order = await callContractStatic(caller, 'getOrderHistory', weidexAddress, `(${user})`);
+    const order = await callContractStatic(
+        caller,
+        'getOrderHistoryByUser',
+        weidexAddress,
+        `(${user})`
+    );
     const result = await order.decode(
         'list((string,(int,int,int,int,int,address,address,address,address,string)))'
     );
@@ -156,6 +162,19 @@ async function getOrders(caller, user, token) {
     return { orders: userOrderArray, valid: orderListsEquals };
 }
 
+async function getTradeHistoryByToken(caller, token) {
+    const userOrders = await callContractStatic(
+        caller,
+        'getTradeHistoryByToken',
+        weidexAddress,
+        `(${token})`
+    );
+    const result = await userOrders.decode(
+        'list((int,int,int,int,int,address,address,address,address,string))'
+    );
+    return result;
+}
+
 function orderListHelper(list) {
     let orders = [];
 
@@ -179,10 +198,10 @@ function orderListHelper(list) {
     return orders;
 }
 
-async function getBuyOpenOrdersByTokenAddress(caller, user, token) {
+async function getOpenBuyOrdersByUserAndToken(caller, user, token) {
     const orders = await callContractStatic(
         caller,
-        'getBuyOpenOrdersByTokenAddress',
+        'getOpenBuyOrdersByUserAndToken',
         weidexAddress,
         `(${user}, ${token})`
     );
