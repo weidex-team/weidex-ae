@@ -9,6 +9,7 @@ contract WeiDex =
       takerFee : int,
       referralFee: int,
       tokenOrders : map(address, map(string, order)),
+      tradeHistory : list(order),
       users : map(address, user),
       referrals: map(address, address),
       feeAccount: address
@@ -20,6 +21,7 @@ contract WeiDex =
         takerFee = _takerFee,
         referralFee = 200000000000000000, // 20%
         tokenOrders = {},
+        tradeHistory = [],
         users={},
         referrals = {},
         feeAccount = _feeAccount
@@ -132,8 +134,9 @@ contract WeiDex =
     updateUserOrderStatus(maker, hash, 3)
     let updatedOrder : order = updateTokenOrderStatus(hash, foundOrder, 3)
     increaseAvailableBalance(maker, foundOrder.sellToken, foundOrder.sellAmount)
-    removeOrder(maker, foundOrder.sellToken, hash)
+    deleteOrder(maker, foundOrder.sellToken, hash)
     addOrderHistory(maker, hash, updatedOrder)
+    addTradeHistory(updatedOrder)
     true
 
   public stateful function takeOrder(maker : address, hash : string, takerSellAmount : int) : bool =
@@ -162,10 +165,12 @@ contract WeiDex =
 
     // update user and token orders
     if(add(order.filled, takerSellAmount) == order.buyAmount)
-      removeOrder(maker, order.sellToken, hash) // if order is fully filled remove it from the open orders
+      deleteOrder(maker, order.sellToken, hash) // if order is fully filled remove it from the open orders
+      addTradeHistory(order{status = 2, filled @ f = f + takerSellAmount})
     else
       updateTokenOrderFilledAmountAndStatus(hash, order, takerSellAmount, 1)
       updateUserOrderFilledAmountAndStatus(maker, hash, takerSellAmount, 1)
+      addTradeHistory(order{status = 1, filled @ f = f + takerSellAmount})
     true
 
   /************************PUBLIC VIEW FUNCTIONS*****************************/
@@ -175,6 +180,11 @@ contract WeiDex =
 
   public function userHasReferrer(user : address) : bool =
     Map.member(user, state.referrals)
+
+  public function getUserBalances(who : address) : list((address, balance)) =
+    let user : user = getUser(who, state.users)
+    let balances : list((address, balance)) = Map.to_list(user.balances)
+    balances
 
   public function fullBalanceOf(who: address, token : address) : int =
     let user : user = getUser(who, state.users)
@@ -195,39 +205,43 @@ contract WeiDex =
     let tokenOrders : list((string, order)) = Map.to_list(state.tokenOrders[token])
     tokenOrders
 
+  public function getOpenSellOrdersByToken(token : address) : list((string, order)) =
+    let l : list((string, order)) = getOpenOrdersByToken(token)
+    filter(isSellOrder, l, token)
+
+  public function getOpenBuyOrdersByToken(token : address) : list((string, order)) =
+    let l : list((string, order)) = getOpenOrdersByToken(token)
+    filter(isBuyOrder, l, token)
+
   public function getOpenOrdersByUserAndToken(who : address,  token : address) : list((string,order)) =
     let l : list((string, order)) = getOpenOrdersByUser(who)
-    filter(openOrders, l, token)
+    filter(isOrderOpen, l, token)
 
-  public function getOrderHistory(who : address) : list((string, order)) =
+  public function getOpenSellOrdersByUserAndToken(who : address, token : address) : list((string,order)) =
+    let l : list((string, order)) = getOpenOrdersByUser(who)
+    filter(isSellOrder, l, token)
+
+  public function getOpenBuyOrdersByUserAndToken(who : address, token : address) : list((string,order)) =
+    let l : list((string, order)) = getOpenOrdersByUser(who)
+    filter(isBuyOrder, l, token)
+
+  public function getOrderHistoryByUser(who : address) : list((string, order)) =
     let user : user = getUser(who, state.users)
     let orderHistory : list((string, order)) = Map.to_list(user.orderHistory)
     orderHistory
 
-  public function getUserBalances(who : address) : list((address, balance)) =
-    let user : user = getUser(who, state.users)
-    let balances : list((address, balance)) = Map.to_list(user.balances)
-    balances
-
-  function getSellOpenOrdersByTokenAddress(who : address, token : address) : list((string,order)) =
-    let l : list((string, order)) = getOpenOrdersByUser(who)
-    filter(openSellOrders, l, token)
-
-  function getBuyOpenOrdersByTokenAddress(who : address, token : address) : list((string,order)) =
-    let l : list((string, order)) = getOpenOrdersByUser(who)
-    filter(openBuyOrders, l, token)
+  public function getOrderHistoryByToken(token : address) : list(order) =
+    filter(isOrderValidForHistory, state.tradeHistory, token)
 
   /************************PRIVATE STATEFUL FUNCTIONS*****************************/
   private stateful function addReferral(user : address, referral : address) =
     put(state{referrals[user] = referral})
 
   private stateful function addUserOrder(user : address, hash : string, order : order) =
-    put(state{users @ old_users =
-      old_users{[user] @ old_user = old_user{orders @ old_orders = old_orders{[hash] = order}}}})
+    put(state{users @ old_users = old_users{[user] @ old_user = old_user{orders @ old_orders = old_orders{[hash] = order}}}})
 
   private stateful function addTokenOrder(token: address, hash : string, order : order) =
-    let newTokenOrders :  map(address, map(string, order)) =
-      state.tokenOrders{[token = {[hash] = order}] @ previousOrders = previousOrders{[hash] = order}}
+    let newTokenOrders :  map(address, map(string, order)) = state.tokenOrders{[token = {[hash] = order}] @ previousOrders = previousOrders{[hash] = order}}
     put(state{tokenOrders=newTokenOrders})
 
   private stateful function updateUserOrder(maker : address, hash : string, newOrder : order) =
@@ -246,17 +260,13 @@ contract WeiDex =
 
   private stateful function updateTokenOrderStatus(hash : string, order : order, status : int) : order =
     let cancelledOrder : order = order{status = status}
-    let newTokenOrders : map(address, map(string, order)) =
-      state.tokenOrders{[order.sellToken =
-        {[hash] = cancelledOrder}] @ previousOrders = previousOrders{[hash] = cancelledOrder}}
+    let newTokenOrders : map(address, map(string, order)) = state.tokenOrders{[order.sellToken = {[hash] = cancelledOrder}] @ previousOrders = previousOrders{[hash] = cancelledOrder}}
     put(state{tokenOrders=newTokenOrders})
     cancelledOrder
 
   private stateful function updateTokenOrderFilledAmountAndStatus(hash : string, order :order, filled : int, status : int) =
     let filledOrder : order = order{filled @ f = f + filled, status = status}
-    let newTokenOrders : map(address, map(string, order)) =
-      state.tokenOrders{[order.sellToken =
-        {[hash] = filledOrder}] @ previousOrders = previousOrders{[hash] = filledOrder}}
+    let newTokenOrders : map(address, map(string, order)) = state.tokenOrders{[order.sellToken = {[hash] = filledOrder}] @ previousOrders = previousOrders{[hash] = filledOrder}}
     put(state{tokenOrders=newTokenOrders})
 
   private stateful function updateBalance(who : address, token : address, newBalance : balance) =
@@ -280,8 +290,8 @@ contract WeiDex =
 
   private stateful function increaseFullBalance(who : address, token : address, amount : int) =
     let defaultUser : user = {balances = {}, orderHistory = {}, orders = {}}
-    let defaultBalance  : balance = {fullBalance = 0, availableBalance = 0}
-    let newUserBalance : balance = state.users[who=defaultUser].balances[token=defaultBalance]{fullBalance @ b = b + amount}
+    let defaultBalance : balance = {fullBalance = 0, availableBalance = 0}
+    let newUserBalance : balance = state.users[who = defaultUser].balances[token = defaultBalance]{fullBalance @ b = b + amount}
     updateBalance(who, token, newUserBalance)
 
   private stateful function decreaseAvailableBalance(who : address, token : address, amount : int) =
@@ -290,8 +300,8 @@ contract WeiDex =
 
   private stateful function increaseAvailableBalance(who : address, token : address, amount : int) =
     let defaultUser : user = {balances = {}, orderHistory = {}, orders = {}}
-    let defaultBalance  : balance = {fullBalance = 0, availableBalance = 0}
-    let newUserBalance : balance = state.users[who=defaultUser].balances[token=defaultBalance]{availableBalance @ b = b + amount}
+    let defaultBalance : balance = {fullBalance = 0, availableBalance = 0}
+    let newUserBalance : balance = state.users[who = defaultUser].balances[token = defaultBalance]{availableBalance @ b = b + amount}
     updateBalance(who, token, newUserBalance)
 
   private stateful function deleteUserOrder(user : address, hash : string) =
@@ -300,17 +310,18 @@ contract WeiDex =
     put(state{users = newUsers})
 
   private stateful function deleteTokenOrder(token : address, hash : string) =
-    let newTokenOrders : map(address, map(string, order)) =
-      state.tokenOrders{[token] @ previousOrders = Map.delete(hash, previousOrders)}
+    let newTokenOrders : map(address, map(string, order)) = state.tokenOrders{[token] @ previousOrders = Map.delete(hash, previousOrders)}
     put(state{tokenOrders=newTokenOrders})
 
-  private stateful function removeOrder(user : address, token : address, hash : string) =
+  private stateful function deleteOrder(user : address, token : address, hash : string) =
     deleteUserOrder(user, hash)
     deleteTokenOrder(token, hash)
 
+  private stateful function addTradeHistory(order : order) =
+    put(state{ tradeHistory = order :: state.tradeHistory })
+
   private stateful function addOrderHistory(user : address, hash : string, order : order) =
-    put(state{users @ old_users =
-      old_users{[user] @ old_user = old_user{orderHistory @ old_orders = old_orders{[hash] = order}}}})
+    put(state{users @ old_users = old_users{[user] @ old_user = old_user{orderHistory @ old_orders = old_orders{[hash] = order}}}})
 
   /************************PRIVATE VIEW FUNCTIONS*****************************/
   private function getUser(who : address, users : map(address, user)) : user =
@@ -331,8 +342,7 @@ contract WeiDex =
     makerOrder
 
   private function getTakerHistoryOrder(filled : int, taker : address, order : order) : order =
-    let takerOrder : order = order{buyToken =
-      order.sellToken, sellToken = order.buyToken, taker = taker, filled = filled}
+    let takerOrder : order = order{buyToken = order.sellToken, sellToken = order.buyToken, taker = taker, filled = filled}
     takerOrder
 
   private function lookupByAddress(k : address, m, v) =
@@ -357,7 +367,7 @@ contract WeiDex =
       Some(x) => x
 
   /************************HELPER FUNCTIONS*****************************/
-  function filter(f : ('a, address) => bool, l : list('a), token : address) = filter'(f, l, token, [])
+  private function filter (f : ('a, address) => bool, l : list('a), token : address) = filter'(f, l, token, [])
   private function filter'(f : ('a, address) => bool, l : list('a), token : address, acc : list('a)) =
     switch(l)
       [] => acc
@@ -367,19 +377,22 @@ contract WeiDex =
         else
           filter'(f, g, token, acc)
 
-  private function openOrders(order : (string,order), tokenAddress : address) : bool =
-    let o = pair_second(order)
+  private function isOrderValidForHistory(order : order, tokenAddress : address) : bool =
+    (order.buyToken == tokenAddress || order.sellToken == tokenAddress) && order.status < 3
+
+  private function isOrderOpen(order : (string,order), tokenAddress : address) : bool =
+    let o = pairSecond(order)
     o.buyToken == tokenAddress || o.sellToken == tokenAddress
 
-  private function openBuyOrders(order : (string,order), tokenAddress : address) : bool =
-    let o = pair_second(order)
+  private function isBuyOrder(order : (string,order), tokenAddress : address) : bool =
+    let o = pairSecond(order)
     o.buyToken == tokenAddress
 
-  private function openSellOrders(order : (string,order), tokenAddress : address) : bool =
-    let o = pair_second(order)
+  private function isSellOrder(order : (string,order), tokenAddress : address) : bool =
+    let o = pairSecond(order)
     o.sellToken == tokenAddress
 
-  function pair_second(tuple) =
+  function pairSecond(tuple) =
     switch(tuple)
       (_, e) => e
 
@@ -412,11 +425,6 @@ contract WeiDex =
     let feeAmount = div(mul(numerator, target), 1000000000000000000)
     feeAmount
 
-  /************************ASSERT*****************************/
-  private function require(b : bool, err : string) =
-    if(!b)
-      abort(err)
-
   private function increaseBalanceAfterFee(who : address, token : address, amount : int, fee : int) =
     let feeAmount : int = getFeeAmount(amount, fee)
     let increaseAmount : int = sub(amount, feeAmount)
@@ -431,3 +439,8 @@ contract WeiDex =
     else
       increaseBalance(who, token, increaseAmount)
       increaseBalance(state.feeAccount, token, feeAmount)
+
+  /************************ASSERT*****************************/
+  private function require(b : bool, err : string) =
+    if(!b)
+      abort(err)
