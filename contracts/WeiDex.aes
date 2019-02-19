@@ -195,6 +195,10 @@ contract WeiDex =
     let tokenOrders : list((string, order)) = Map.to_list(state.tokenOrders[token])
     tokenOrders
 
+  public function getOpenOrdersByUserAndToken(who : address,  token : address) : list((string,order)) =
+    let l : list((string, order)) = getOpenOrdersByUser(who)
+    filter(openOrders, l, token)
+
   public function getOrderHistory(who : address) : list((string, order)) =
     let user : user = getUser(who, state.users)
     let orderHistory : list((string, order)) = Map.to_list(user.orderHistory)
@@ -285,9 +289,9 @@ contract WeiDex =
     updateBalance(who, token, newUserBalance)
 
   private stateful function increaseAvailableBalance(who : address, token : address, amount : int) =
-    let defaultBalances : map(address, balance) = {[token] = {fullBalance = 0, availableBalance = 0}}
-    let defaultUser : user = {balances=defaultBalances, orderHistory= {}, orders={}}
-    let newUserBalance : balance = state.users[who=defaultUser].balances[token]{availableBalance @ a = add(a, amount)}
+    let defaultUser : user = {balances = {}, orderHistory = {}, orders = {}}
+    let defaultBalance  : balance = {fullBalance = 0, availableBalance = 0}
+    let newUserBalance : balance = state.users[who=defaultUser].balances[token=defaultBalance]{availableBalance @ b = b + amount}
     updateBalance(who, token, newUserBalance)
 
   private stateful function deleteUserOrder(user : address, hash : string) =
@@ -363,9 +367,13 @@ contract WeiDex =
         else
           filter'(f, g, token, acc)
 
-  private function openBuyOrders(order : (string,order), tokenAddress : address) : bool =
+  private function openOrders(order : (string,order), tokenAddress : address) : bool =
     let o = pair_second(order)
     o.buyToken == tokenAddress || o.sellToken == tokenAddress
+
+  private function openBuyOrders(order : (string,order), tokenAddress : address) : bool =
+    let o = pair_second(order)
+    o.buyToken == tokenAddress
 
   private function openSellOrders(order : (string,order), tokenAddress : address) : bool =
     let o = pair_second(order)
