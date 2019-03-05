@@ -16,7 +16,8 @@
  */
 const Ae = require('@aeternity/aepp-sdk').Universal;
 const Deployer = require('forgae').Deployer;
-const gasLimit = 1000000;
+const gasLimit = 1000000000;
+const gasPrice = '1000000000';
 
 const deploy = async (network, privateKey) => {
     let deployer = new Deployer(network, privateKey);
@@ -28,6 +29,7 @@ const deploy = async (network, privateKey) => {
     let result = await deployer.deploy(
         './contracts/WeiDex.aes',
         gasLimit,
+        gasPrice,
         `(${feeAccount}, ${rawMakerFee}, ${rawTakerFee})`
     );
 };
