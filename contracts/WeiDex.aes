@@ -47,7 +47,6 @@ contract WeiDex =
       buyAmount : int,
       filled : int,
       status : int, // 0: open, 1: partially filled, 2: filled, 3: cancelled, 4: error
-      expiration: int, // Chain.timestamp
       sellToken : address,
       buyToken : address,
       maker : address,
@@ -96,7 +95,6 @@ contract WeiDex =
   public stateful function placeOrder(
                                         sellAmount : int,
                                         buyAmount : int,
-                                        expiration : int,
                                         sellToken : address,
                                         buyToken : address,
                                         hash : string
@@ -113,7 +111,6 @@ contract WeiDex =
         buyAmount = buyAmount,
         filled = 0,
         status = 0,
-        expiration = expiration,
         sellToken = sellToken,
         buyToken = buyToken,
         maker = maker,
@@ -133,7 +130,8 @@ contract WeiDex =
     require(foundOrder.status < 2, "CANCEL_INVALID") // user should not be able to cancel fully filled or already cancelled orders, because his locked balance will be decreased
     updateUserOrderStatus(maker, hash, 3)
     let updatedOrder : order = updateTokenOrderStatus(hash, foundOrder, 3)
-    increaseAvailableBalance(maker, foundOrder.sellToken, foundOrder.sellAmount)
+    let makerRefund : int = foundOrder.sellAmount - getPartialAmount(foundOrder.sellAmount, foundOrder.buyAmount, foundOrder.filled)
+    increaseAvailableBalance(maker, foundOrder.sellToken, makerRefund)
     deleteOrder(maker, foundOrder.sellToken, hash)
     addOrderHistory(maker, hash, updatedOrder)
     addTradeHistory(updatedOrder)
@@ -147,12 +145,11 @@ contract WeiDex =
 
     // assert conditions
     require((order.filled + takerSellAmount) =< order.buyAmount, "TAKE_ORDER_FILLED")
-    require(order.expiration > Chain.timestamp, "TAKE_ORDER_EXPIRED")
     require(availableBalanceOf(taker, order.buyToken) >= takerSellAmount, "TAKE_INSUFFICIENT_FUNDS_TAKER")
-    require(availableBalanceOf(maker, order.sellToken) >= takerReceivedAmount, "TAKE_INSUFFICIENT_FUNDS_MAKER")
+    require(fullBalanceOf(maker, order.sellToken) >= takerReceivedAmount, "TAKE_INSUFFICIENT_FUNDS_MAKER")
 
     // update user balances
-    decreaseBalance(maker, order.sellToken, takerReceivedAmount)
+    decreaseFullBalance(maker, order.sellToken, takerReceivedAmount)
     decreaseBalance(taker, order.buyToken, takerSellAmount)
     increaseBalanceAfterFee(maker, order.buyToken, takerSellAmount, state.makerFee)
     increaseBalanceAfterFee(taker, order.sellToken, takerReceivedAmount, state.takerFee)
@@ -202,7 +199,7 @@ contract WeiDex =
     openOrders
 
   public function getOpenOrdersByToken(token : address) : list((string, order)) =
-    let tokenOrders : list((string, order)) = Map.to_list(state.tokenOrders[token])
+    let tokenOrders : list((string, order)) = Map.to_list(state.tokenOrders[token = {}])
     tokenOrders
 
   public function getOpenSellOrdersByToken(token : address) : list((string, order)) =
@@ -354,7 +351,6 @@ contract WeiDex =
       buyAmount = 0, 
       filled = 0, 
       status = 4, 
-      expiration = 0, 
       sellToken = #0, 
       buyToken = #0, 
       maker = #0, 
