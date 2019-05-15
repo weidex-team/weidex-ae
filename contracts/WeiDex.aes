@@ -56,7 +56,7 @@ contract WeiDex =
 
   /************************PUBLIC STATEFUL FUNCTIONS*****************************/
   public stateful function deposit(
-                                    token : Token,
+                                    token: option(Token),
                                     amount : int,
                                     beneficiary : address,
                                     referral : address
@@ -65,44 +65,56 @@ contract WeiDex =
     let value : int = amount
     let user  : address = Call.caller
 
-    if(token.address == #0)
-      require(value == Call.value, "DEPOSIT_INVALID_AMOUNT")
-    else
-      require(token.transferFrom(user, Contract.address, value), "DEPOSIT_TOKEN_TRANSFER_FAIL")
-
-    increaseBalance(user, token.address, value)
+    switch(token)
+      None => 
+        require(value == Call.value, "DEPOSIT_INVALID_AMOUNT")
+        increaseBalance(user, #0, value)
+      Some(t) => 
+        require(t.transferFrom(user, Contract.address, value), "DEPOSIT_TOKEN_TRANSFER_FAIL")
+        increaseBalance(user, t.address, value)
 
     if(!userHasReferrer(user))
       addReferral(user, referral)
 
     true
 
-  public stateful function withdraw(token : Token, amount : int) : bool =
+  public stateful function withdraw(token : option(Token), amount : int) : bool =
     require(amount > 0, "WITHDRAW_SUB_ZERO_AMOUNT") // the lack of `uint` makes this necessarily
     let user : address = Call.caller
 
-    require(availableBalanceOf(user, token.address) >= amount, "WITHDRAW_INSUFFICIENT_FUNDS")
-
-    decreaseBalance(user, token.address, amount)
-
-    if(token.address == #0)
-      Chain.spend(user, amount)
-    else
-      require(token.transfer(user, amount), "WITHDRAW_TOKEN_TRANSFER_FAIL")
+    switch(token)
+      None => 
+        require(availableBalanceOf(user, #0) >= amount, "WITHDRAW_INSUFFICIENT_FUNDS")
+        decreaseBalance(user, #0, amount)
+        Chain.spend(user, amount)
+      Some(t) => 
+        require(availableBalanceOf(user, t.address) >= amount, "WITHDRAW_INSUFFICIENT_FUNDS")
+        decreaseBalance(user, t.address, amount)
+        require(t.transfer(user, amount), "WITHDRAW_TOKEN_TRANSFER_FAIL")
 
     true
 
   public stateful function placeOrder(
                                         sellAmount : int,
                                         buyAmount : int,
-                                        sellToken : address,
-                                        buyToken : address,
+                                        sellToken : option(address),
+                                        buyToken : option(address),
                                         hash : string
                                       ) : bool =
     let maker : address = Call.caller
     let user : user = getUser(maker, state.users)
 
-    require(availableBalanceOf(maker, sellToken) >= sellAmount, "PLACE_INSUFFICIENT_FUNDS")
+    let parsedSellToken =
+      switch(sellToken)
+        None => #0
+        Some(t) => t
+
+    let parsedBuyToken =
+      switch(buyToken)
+        None => #0
+        Some(t) => t
+
+    require(availableBalanceOf(maker, parsedSellToken) >= sellAmount, "PLACE_INSUFFICIENT_FUNDS")
     require(!userHasOrder(hash, user.orders), "PLACE_ORDER_ALREADY_EXISTS")
 
     let order : order =
@@ -111,15 +123,16 @@ contract WeiDex =
         buyAmount = buyAmount,
         filled = 0,
         status = 0,
-        sellToken = sellToken,
-        buyToken = buyToken,
+        sellToken = parsedSellToken,
+        buyToken = parsedBuyToken,
         maker = maker,
         taker = #0,
         hash = hash}
 
-    decreaseAvailableBalance(maker, sellToken, sellAmount)
+    decreaseAvailableBalance(maker, parsedSellToken, sellAmount)
     addUserOrder(maker, hash, order)
-    addTokenOrder(sellToken, hash, order)
+    addTokenOrder(parsedSellToken, hash, order)
+
     true
 
   public stateful function cancelOrder(hash : string) : bool =
@@ -202,25 +215,17 @@ contract WeiDex =
     let tokenOrders : list((string, order)) = Map.to_list(state.tokenOrders[token = {}])
     tokenOrders
 
-  public function getOpenSellOrdersByToken(token : address) : list((string, order)) =
-    let l : list((string, order)) = getOpenOrdersByToken(token)
-    filter(isSellOrder, l, token)
+  public function getOpenSellOrdersByToken(quote : address, base : address) : list((string, order)) =
+    let l : list((string, order)) = getOpenOrdersByToken(base)
+    filter(getOrderByType, l, quote)
 
-  public function getOpenBuyOrdersByToken(token : address) : list((string, order)) =
-    let l : list((string, order)) = getOpenOrdersByToken(token)
-    filter(isBuyOrder, l, token)
+  public function getOpenBuyOrdersByToken(quote : address, base : address) : list((string, order)) =
+    let l : list((string, order)) = getOpenOrdersByToken(quote)
+    filter(getOrderByType, l, base)
 
   public function getOpenOrdersByUserAndToken(who : address,  token : address) : list((string,order)) =
     let l : list((string, order)) = getOpenOrdersByUser(who)
     filter(isOrderOpen, l, token)
-
-  public function getOpenSellOrdersByUserAndToken(who : address, token : address) : list((string,order)) =
-    let l : list((string, order)) = getOpenOrdersByUser(who)
-    filter(isSellOrder, l, token)
-
-  public function getOpenBuyOrdersByUserAndToken(who : address, token : address) : list((string,order)) =
-    let l : list((string, order)) = getOpenOrdersByUser(who)
-    filter(isBuyOrder, l, token)
 
   public function getOrderHistoryByUser(who : address) : list((string, order)) =
     let user : user = getUser(who, state.users)
@@ -375,13 +380,9 @@ contract WeiDex =
     let o = pairSecond(order)
     o.buyToken == tokenAddress || o.sellToken == tokenAddress
 
-  private function isBuyOrder(order : (string,order), tokenAddress : address) : bool =
+  private function getOrderByType(order : (string,order), token : address) : bool =
     let o = pairSecond(order)
-    o.buyToken == tokenAddress
-
-  private function isSellOrder(order : (string,order), tokenAddress : address) : bool =
-    let o = pairSecond(order)
-    o.sellToken == tokenAddress
+    o.buyToken == token
 
   function pairSecond(tuple) =
     switch(tuple)
