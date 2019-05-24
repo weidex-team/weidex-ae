@@ -26,7 +26,7 @@ contract ERC20 =
   private stateful function _transfer(from: address, to: address, value: int) : bool =
     require(value > 0, "Value is sub zero")
     require(value =< balanceOf(from), "Not enough balance")
-    require(to != #0, "Invalid address")
+    require(to != ak_11111111111111111111111111111111273Yts, "Invalid address")
       
     put(state{
       _balances[from] = sub(balanceOf(from), value),
@@ -40,7 +40,7 @@ contract ERC20 =
     true
 
   public stateful function mint(account: address, value: int) : bool =
-    require(account != #0, "Invalid address")
+    require(account != ak_11111111111111111111111111111111273Yts, "Invalid address")
 
     put(state{_totalSupply = add(state._totalSupply, value),
           _balances[account] = add(balanceOf(account), value)})
