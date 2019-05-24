@@ -61,7 +61,7 @@ contract WeiDex =
                                     beneficiary : address,
                                     referral : address
                                   ) : bool =
-    require(amount > 0, "DEPOSIT_SUB_ZERO_AMOUNT") // the lack of `uint` makes this necessarily
+    require(amount > 0, "DEPOSIT_SUB_ZERO_AMOUNT")
     let value : int = amount
     let user  : address = Call.caller
 
@@ -79,7 +79,7 @@ contract WeiDex =
     true
 
   public stateful function withdraw(token : option(Token), amount : int) : bool =
-    require(amount > 0, "WITHDRAW_SUB_ZERO_AMOUNT") // the lack of `uint` makes this necessarily
+    require(amount > 0, "WITHDRAW_SUB_ZERO_AMOUNT")
     let user : address = Call.caller
 
     switch(token)
@@ -234,6 +234,9 @@ contract WeiDex =
 
   public function getOrderHistoryByToken(token : address) : list(order) =
     filter(isOrderValidForHistory, state.tradeHistory, token)
+
+  public function getOrderHistory() : list(order) =
+    state.tradeHistory
 
   /************************PRIVATE STATEFUL FUNCTIONS*****************************/
   private stateful function addReferral(user : address, referral : address) =
